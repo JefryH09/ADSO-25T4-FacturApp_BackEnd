@@ -107,50 +107,63 @@ def put_products(product_id):
     if not product:
         return jsonify({'success': False,
                          'message': 'Product not found'}), 404
-    data = request.get_json()
+    
+    data = request.get_json(silent=True) or {}
     name = data.get('name')
     description = data.get('description')
     price = data.get('price')
     stock = data.get('stock')
     category_id = data.get('category_id')
     errors = {}
+    validated_data = {}     # Nuevo, almacen temporal para no tocar el producto todavia
 
     if product.name != name:
         existing_product = Products.get_by_name(name)
         if existing_product:
             errors['name'] = 'name must be unique'
-
-    if name is not None:
-        product.name = name   
+        # Nueva linea    
+        else:      
+            validated_data['name'] = name
+    else:
+        validated_data['name'] = name 
+  
 
     if description is not None:
-        product.description = description
+        validated_data['description'] = description
+
     if price is not None:
         try:
             price = float(price)
             if price < 0:
                 errors['price'] = 'price must be a non-negative number'
             else:
-                product.price = price
+                validated_data['price'] = price
         except ValueError:
             errors['price'] = 'price must be a number'
+
     if stock is not None:
         try:
             stock = float(stock)
             if stock < 0:
                 errors['stock'] = 'stock must be a non-negative number'
             else:
-                product.stock = stock
+                validated_data['stock'] = stock
         except ValueError:
             errors['stock'] = 'stock must be a number'
+
     if category_id is not None:
-        product.category_id = category_id
-    if errors:    
+        validated_data['category_id'] = category_id
+    if errors:   
+        session.rollback() # Esta linea limpia la sesion de sqlalchemy para que nada quede a medias 
         return jsonify({ 'success': False,
                          'message': 'Errors in data validation',
                          'validation-errors': errors
-                       }), 400    
+                       }), 400  
+    # Aqui se aplican cambios y SOLO se ejecutna si no hubo ningun error
+    for field, value in validated_data.items():
+        setattr(product, field, value)  
     Products.update(product)
+
     return jsonify({
         'id': product.id,
         'name': product.name,
